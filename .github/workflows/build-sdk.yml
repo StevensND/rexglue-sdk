@@ -1,0 +1,74 @@
+name: Build SDK (win-amd64)
+
+# Compila TU fork del rexglue-sdk en la nube y sube el resultado como artifact
+# (incluye bin/rexgpu-xenos.dll). Copia el DLL a D:\Saints_Row_2 para probar.
+#
+# Se dispara al hacer push (cuando modifiques codigo) y tambien a mano.
+# Usa sccache: el primer build tarda ~30 min; los siguientes, tras cambios
+# pequenos, bastante menos.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "**" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout (con submodulos y tags)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Instalar toolchain (Clang + CMake + Ninja)
+        run: choco install llvm cmake ninja -y --no-progress
+
+      - name: Cache de compilacion (sccache)
+        uses: hendrikmuhs/ccache-action@v1.2.22
+        with:
+          variant: sccache
+          key: win-amd64
+
+      - name: Configurar (preset win-amd64)
+        run: >
+          cmake --preset win-amd64
+          -DCMAKE_C_COMPILER=clang
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+
+      - name: Compilar e instalar
+        run: cmake --build out/build/win-amd64 --target install --parallel
+
+      - name: Estadisticas sccache
+        if: always()
+        shell: bash
+        run: sccache --show-stats || true
+
+      - name: Leer version
+        id: version
+        shell: bash
+        run: |
+          v=$(sed -nE 's/^#define REXGLUE_VERSION_STRING "([^"]+)".*/\1/p' \
+            out/build/win-amd64/include/rex/version.h)
+          echo "v=${v}" >> "$GITHUB_OUTPUT"
+          echo "Version compilada: ${v}"
+
+      - name: Empaquetar
+        shell: bash
+        run: |
+          cd out/install
+          7z a "rexglue-sdk-${{ steps.version.outputs.v }}-win-amd64.zip" win-amd64
+
+      - name: Subir artifact (SDK compilado)
+        uses: actions/upload-artifact@v4
+        with:
+          name: rexglue-sdk-win-amd64
+          path: out/install/rexglue-sdk-*-win-amd64.zip
+          retention-days: 14
