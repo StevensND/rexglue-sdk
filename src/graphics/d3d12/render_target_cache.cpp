@@ -1067,6 +1067,39 @@ bool D3D12RenderTargetCache::Update(bool is_rasterization_done,
     case Path::kHostRenderTargets: {
       RenderTarget* const* depth_and_color_render_targets =
           last_update_accumulated_render_targets();
+      // === PARCHE DIAGNOSTICO RTV (quitar despues) ===
+      {
+        static uint32_t rtv_dbg_count = 0;
+        if (rtv_dbg_count < 200) {
+          ++rtv_dbg_count;
+          int color_count = 0;
+          for (uint32_t i = 1; i <= xenos::kMaxColorRenderTargets; ++i) {
+            if (depth_and_color_render_targets[i]) ++color_count;
+          }
+          const RenderTarget* depth_rt = depth_and_color_render_targets[0];
+          REXGPU_INFO(
+              "[RTV-DBG] draw #{}: color_targets={} depth={} | "
+              "fmt0={} fmt1={} fmt2={} fmt3={}",
+              rtv_dbg_count, color_count,
+              depth_rt ? "YES" : "no",
+              depth_and_color_render_targets[1]
+                  ? int(depth_and_color_render_targets[1]->key().resource_format) : -1,
+              depth_and_color_render_targets[2]
+                  ? int(depth_and_color_render_targets[2]->key().resource_format) : -1,
+              depth_and_color_render_targets[3]
+                  ? int(depth_and_color_render_targets[3]->key().resource_format) : -1,
+              depth_and_color_render_targets[4]
+                  ? int(depth_and_color_render_targets[4]->key().resource_format) : -1);
+          if (depth_and_color_render_targets[1]) {
+            REXGPU_INFO(
+                "[RTV-DBG]   color0 base_tiles={} msaa={} is_depth={}",
+                uint32_t(depth_and_color_render_targets[1]->key().base_tiles),
+                uint32_t(depth_and_color_render_targets[1]->key().msaa_samples),
+                uint32_t(depth_and_color_render_targets[1]->key().is_depth));
+          }
+        }
+      }
+      // === FIN PARCHE ===
       PerformTransfersAndResolveClears(1 + xenos::kMaxColorRenderTargets,
                                        depth_and_color_render_targets, last_update_transfers());
       SetCommandListRenderTargets(depth_and_color_render_targets);
@@ -1164,6 +1197,17 @@ bool D3D12RenderTargetCache::Resolve(const memory::Memory& memory, D3D12SharedMe
                                      uint32_t& written_address_out, uint32_t& written_length_out) {
   written_address_out = 0;
   written_length_out = 0;
+  // === PARCHE DIAGNOSTICO RTV (quitar despues) ===
+  {
+    static uint32_t resolve_dbg_count = 0;
+    if (resolve_dbg_count < 100) {
+      ++resolve_dbg_count;
+      REXGPU_INFO("[RTV-DBG] Resolve() llamada #{} (path={})",
+                  resolve_dbg_count,
+                  GetPath() == Path::kHostRenderTargets ? "RTV" : "otro");
+    }
+  }
+  // === FIN PARCHE ===
 
   bool draw_resolution_scaled = IsDrawResolutionScaled();
 
